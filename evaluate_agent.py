@@ -4,6 +4,7 @@ import torch
 from agents.dqn.agent import DQNAgent
 from agents.ppo.agent import PPOAgent
 from agents.random_agent import RandomAgent
+from agents.rule_based import RuleBasedAgent
 from data.data_loader import load_data, train_test_split
 from env.trading_env import TradingEnv
 from utils.config import COMMON, DATA_CONFIG, REWARD_CONFIG
@@ -38,14 +39,21 @@ def _build_agent(algo, state_size, action_size, window_size, model_path):
     if algo == "random":
         return RandomAgent()
 
-    raise ValueError(f"Unsupported algo '{algo}'. Use 'dqn', 'ppo', or 'random'.")
+    if algo in ("sma200", "trend_vol"):
+        return RuleBasedAgent(algo)
+
+    raise ValueError(
+        f"Unsupported algo '{algo}'. Use 'dqn', 'ppo', 'random', 'sma200', or 'trend_vol'."
+    )
 
 
-def _select_action(agent, algo, state, valid_actions, deterministic=True):
+def _select_action(agent, algo, state, valid_actions, env, deterministic=True):
     if algo == "dqn":
         return agent.act(state, valid_actions=valid_actions)
     if algo == "random":
         return agent.act(state, valid_actions=valid_actions)
+    if algo in ("sma200", "trend_vol"):
+        return agent.act(env.data.iloc[env.current_step], valid_actions)
     # ppo
     return agent.select_action(state, valid_actions=valid_actions, deterministic=deterministic)
 
@@ -89,7 +97,7 @@ def evaluate_agent(
     action_size = COMMON["action_size"]
 
     algo_lower = algo.lower()
-    if model_path is None and algo_lower not in ("random",):
+    if model_path is None and algo_lower not in ("random", "sma200", "trend_vol"):
         model_path = f"models/{algo_lower}.pth"
 
     agent = _build_agent(algo_lower, state_size, action_size, window_size, model_path)
@@ -104,7 +112,14 @@ def evaluate_agent(
     rebalance_count = 0
 
     while not done:
-        action = _select_action(agent, algo_lower, state, env.get_valid_actions(), deterministic)
+        action = _select_action(
+            agent,
+            algo_lower,
+            state,
+            env.get_valid_actions(),
+            env,
+            deterministic,
+        )
         next_state, reward, done = env.step(action)
 
         after_value = env.balance + env.shares_held * env.prev_price
@@ -180,7 +195,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo",        choices=["dqn", "ppo", "random"], default="ppo")
+    parser.add_argument(
+        "--algo",
+        choices=["dqn", "ppo", "random", "sma200", "trend_vol"],
+        default="ppo",
+    )
     parser.add_argument("--model-path",  default=None)
     parser.add_argument("--ticker",      default="AAPL")
     parser.add_argument("--window-size", type=int, default=None)

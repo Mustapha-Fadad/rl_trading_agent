@@ -9,6 +9,7 @@ import torch
 
 from agents.dqn.agent import DQNAgent
 from agents.ppo.agent import PPOAgent
+from agents.rule_based import RuleBasedAgent
 from data.data_loader import load_data
 from env.trading_env import TradingEnv
 from utils.config import COMMON, DATA_CONFIG, REWARD_CONFIG, TRAIN_CONFIG
@@ -40,6 +41,8 @@ def evaluate_on_env(agent, algo, env):
             action = agent.act(state, valid_actions=valid_actions)
         elif algo == "ppo":
             action = agent.select_action(state, valid_actions=valid_actions, deterministic=True)
+        else:
+            action = agent.act(env.data.iloc[env.current_step], valid_actions)
 
         next_state, reward, done = env.step(action)
         after_value = env.balance + env.shares_held * env.prev_price
@@ -135,6 +138,7 @@ def run_walk_forward(
     step_days=252,
     episodes=100,
     seeds=1,
+    output_path="reports/walk_forward_results.csv",
 ):
     df = load_data(ticker, **DATA_CONFIG)
     total_len = len(df)
@@ -166,12 +170,18 @@ def run_walk_forward(
     print(f"Independent seeds per fold: {seeds}")
     print(f"=======================================================\n")
 
-    algos_to_run = ["dqn", "ppo"] if algo.lower() == "both" else [algo.lower()]
+    algo_groups = {
+        "both": ["dqn", "ppo"],
+        "baselines": ["sma200", "trend_vol"],
+        "all": ["dqn", "ppo", "sma200", "trend_vol"],
+    }
+    algos_to_run = algo_groups.get(algo.lower(), [algo.lower()])
     results = []
 
     for fid, train_df, test_df in folds:
         for current_algo in algos_to_run:
-            for seed_offset in range(seeds):
+            seed_offsets = range(seeds) if current_algo in ("dqn", "ppo") else range(1)
+            for seed_offset in seed_offsets:
                 run_seed = COMMON["seed"] + seed_offset
                 set_seed(run_seed)
                 train_env = TradingEnv(
@@ -190,15 +200,21 @@ def run_walk_forward(
                     random_start=False,
                     **reward_kwargs,
                 )
+                if current_algo in ("dqn", "ppo"):
+                    run_description = f"Seed: {run_seed} | Training on {len(train_df)} rows"
+                else:
+                    run_description = "Deterministic rule evaluation"
                 print(
                     f"--> Fold {fid}/{len(folds)} | Algo: {current_algo.upper()} | "
-                    f"Seed: {run_seed} | Training on {len(train_df)} rows..."
+                    f"{run_description}..."
                 )
 
                 if current_algo == "dqn":
                     agent = train_dqn_fold(train_env, episodes=episodes)
-                else:
+                elif current_algo == "ppo":
                     agent = train_ppo_fold(train_env, episodes=max(episodes, 200))
+                else:
+                    agent = RuleBasedAgent(current_algo)
 
                 metrics = evaluate_on_env(agent, current_algo, test_env)
 
@@ -221,7 +237,10 @@ def run_walk_forward(
 
     # Save to CSV
     os.makedirs("reports", exist_ok=True)
-    out_path = os.path.join("reports", "walk_forward_results.csv")
+    out_path = output_path
+    output_dir = os.path.dirname(out_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     fieldnames = ["fold", "seed", "algo", "ticker", "pipeline_version", "train_days", "test_days", "agent_return_pct", "bh_return_pct", "alpha_pct", "max_drawdown_pct", "sharpe_ratio", "bh_max_drawdown_pct", "bh_sharpe_ratio", "turnover", "rebalances", "average_exposure_pct"]
 
@@ -263,13 +282,23 @@ def run_walk_forward(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Rolling Walk-Forward Validation for RL Trading Agents")
-    parser.add_argument("--algo", choices=["dqn", "ppo", "both"], default="both", help="Algorithm to evaluate")
+    parser.add_argument(
+        "--algo",
+        choices=["dqn", "ppo", "sma200", "trend_vol", "both", "baselines", "all"],
+        default="both",
+        help="Algorithm or algorithm group to evaluate",
+    )
     parser.add_argument("--ticker", default="AAPL", help="Stock ticker to run walk-forward on")
     parser.add_argument("--train-days", type=int, default=1000, help="Number of training days per fold")
     parser.add_argument("--test-days", type=int, default=252, help="Number of test days per fold")
     parser.add_argument("--step-days", type=int, default=252, help="Slide step size in days between folds")
     parser.add_argument("--episodes", type=int, default=100, help="Training episodes per fold")
     parser.add_argument("--seeds", type=int, default=1, help="Independent training seeds per fold")
+    parser.add_argument(
+        "--output",
+        default="reports/walk_forward_results.csv",
+        help="CSV output path",
+    )
     args = parser.parse_args()
 
     run_walk_forward(
@@ -280,4 +309,5 @@ if __name__ == "__main__":
         step_days=args.step_days,
         episodes=args.episodes,
         seeds=max(1, args.seeds),
+        output_path=args.output,
     )

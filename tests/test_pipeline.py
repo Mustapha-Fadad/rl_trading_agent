@@ -5,6 +5,7 @@ import torch
 
 from agents.dqn.agent import DQNAgent
 from agents.ppo.agent import PPOAgent
+from agents.rule_based import RuleBasedAgent
 from data import data_loader
 from data.alpaca_loader import load_alpaca_data
 from scripts.paper_trade import _submit_action, _valid_actions, build_state_from_df
@@ -76,6 +77,20 @@ def test_ppo_bootstraps_nonterminal_rollout():
 
     advantages = agent._compute_advantages(rewards, values, masks, bootstrap_value=2.0)
     assert advantages.item() == pytest.approx(agent.gamma * 2.0 - 1.0)
+
+
+def test_sma200_baseline_follows_long_term_trend():
+    agent = RuleBasedAgent("sma200")
+    assert agent.act({"Close": 101.0, "SMA_200": 100.0}, [0, 1, 2, 3, 4]) == 4
+    assert agent.act({"Close": 99.0, "SMA_200": 100.0}, [0, 1, 2, 3, 4]) == 0
+    assert agent.act({"Close": 99.0, "SMA_200": 100.0}, [3]) == 3
+
+
+def test_trend_vol_baseline_uses_nearest_allocation():
+    agent = RuleBasedAgent("trend_vol", target_volatility=0.20)
+    row = {"Close": 101.0, "SMA_200": 100.0, "Volatility_20": 0.40}
+    assert agent.target_allocation(row) == pytest.approx(0.5)
+    assert agent.act(row, [0, 1, 2, 3, 4]) == 2
 
 
 def test_ppo_updates_and_clears_a_truncated_rollout():

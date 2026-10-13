@@ -63,6 +63,11 @@ def main():
                 split="test"
             ))
 
+    # ---- Deterministic rule-based baselines ----
+    for algo in ("sma200", "trend_vol"):
+        for ticker in TRAIN_CONFIG["tickers"]:
+            rows.append(evaluate_agent(algo=algo, ticker=ticker, split="test"))
+
     # ---- Multi-seed random-agent baseline ----
     for ticker in TRAIN_CONFIG["tickers"]:
         rows.append(evaluate_random_baseline(ticker))

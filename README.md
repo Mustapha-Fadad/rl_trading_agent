@@ -18,18 +18,23 @@ three independent seeds per fold.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | DQN | 18.33% | -8.96% | 15.72% | 0.982 | 2/10 |
 | PPO | 24.53% | -2.75% | 18.24% | 1.036 | 2/10 |
+| SMA-200 | 14.04% | -13.25% | 18.37% | 0.592 | 0/10 |
+| Trend + volatility | 16.35% | -10.94% | 14.62% | 0.784 | 2/10 |
 | Buy & Hold | 27.29% | - | 20.67% | 1.038 | - |
 
 DQN reduced average drawdown relative to Buy & Hold but sacrificed return and
 showed meaningful variation across seeds. PPO frequently converged to 100%
 exposure, making it close to Buy & Hold rather than a distinct source of alpha.
-The results are reported honestly: neither agent demonstrates consistent market
-outperformance.
+In this comparison, DQN produced higher mean return and Sharpe than both simple
+rule-based strategies, while trend-plus-volatility produced the lowest average
+drawdown. The results are reported honestly: neither RL agent demonstrates
+consistent market outperformance.
 
 Detailed outputs are available in:
 
 - `reports/evaluation_summary.csv`
 - `reports/walk_forward_results.csv`
+- `reports/baseline_walk_forward_results.csv`
 
 ## Features
 
@@ -43,6 +48,7 @@ Detailed outputs are available in:
   normalized volume, and rolling price drawdown
 - Chronological train/test splits and multi-seed walk-forward validation
 - Buy & Hold, cash, and multi-seed random baselines
+- SMA-200 trend and trend-plus-volatility rule-based baselines
 - Versioned checkpoints that reject incompatible model pipelines
 - Streamlit dashboard for evaluation and training reports
 - Alpaca paper-order execution with market-hours, cooldown, open-order, and
@@ -113,6 +119,12 @@ pipeline check is:
 
 ```powershell
 python -m scripts.walk_forward --algo dqn --ticker AAPL --episodes 20 --seeds 1
+```
+
+Evaluate the deterministic rule-based baselines without retraining RL models:
+
+```powershell
+python -m scripts.walk_forward --algo baselines --ticker AAPL --output reports/baseline_walk_forward_results.csv
 ```
 
 ## Dashboard

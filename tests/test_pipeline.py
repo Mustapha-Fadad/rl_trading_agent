@@ -9,6 +9,7 @@ from agents.rule_based import RuleBasedAgent
 from data import data_loader
 from data.alpaca_loader import load_alpaca_data
 from scripts.paper_trade import _submit_action, _valid_actions, build_state_from_df
+from scripts.tune_dqn import configure_study, robust_seed_score
 from scripts.walk_forward import evaluate_on_env, train_dqn_fold
 from env.trading_env import TradingEnv
 from utils.checkpoints import load_checkpoint, save_checkpoint
@@ -129,6 +130,57 @@ def test_dqn_performs_an_optimization_step():
     agent.memory.add(state, 4, -0.1, state, True)
     agent.train()
     assert agent.optimization_steps == 1
+
+
+def test_dqn_accepts_per_agent_hyperparameter_overrides():
+    agent = DQNAgent(
+        state_size=39,
+        action_size=5,
+        window_size=10,
+        config_overrides={
+            "lr": 0.00012,
+            "gamma": 0.975,
+            "batch_size": 32,
+            "dropout": 0.1,
+        },
+    )
+    assert agent.lr == pytest.approx(0.00012)
+    assert agent.gamma == pytest.approx(0.975)
+    assert agent.batch_size == 32
+    assert agent.dropout == pytest.approx(0.1)
+    assert agent.optimizer.param_groups[0]["lr"] == pytest.approx(0.00012)
+
+
+def test_robust_seed_score_penalizes_variance():
+    stable = robust_seed_score([0.1, 0.1, 0.1], stability_weight=0.5)
+    unstable = robust_seed_score([0.0, 0.1, 0.2], stability_weight=0.5)
+    assert stable == pytest.approx(0.1)
+    assert unstable < stable
+
+
+def test_dqn_tuning_study_rejects_protocol_changes():
+    class Study:
+        def __init__(self):
+            self.user_attrs = {}
+
+        def set_user_attr(self, name, value):
+            self.user_attrs[name] = value
+
+    class Args:
+        episodes = 10
+        seeds = 2
+        seed_start = 42
+        tickers = ["AAPL"]
+        val_windows = 2
+        val_window_size = 252
+        stability_weight = 0.5
+
+    study = Study()
+    configure_study(study, Args())
+    configure_study(study, Args())
+    Args.episodes = 11
+    with pytest.raises(ValueError, match="study configuration"):
+        configure_study(study, Args())
 
 
 def test_walk_forward_evaluation_restores_dqn_training_state():

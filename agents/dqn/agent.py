@@ -10,22 +10,30 @@ from utils.config import COMMON, DQN_CONFIG
 
 
 class DQNAgent:
-    def __init__(self, state_size, action_size=None, window_size=None):
+    def __init__(
+        self,
+        state_size,
+        action_size=None,
+        window_size=None,
+        config_overrides=None,
+    ):
+
+        config = {**DQN_CONFIG, **(config_overrides or {})}
 
         self.state_size  = state_size
         self.action_size = action_size if action_size is not None else COMMON["action_size"]
         self.window_size = window_size if window_size is not None else COMMON["window_size"]
 
-        self.gamma         = COMMON["gamma"]
-        self.epsilon       = DQN_CONFIG["epsilon"]
-        self.epsilon_decay = DQN_CONFIG["epsilon_decay"]
-        self.epsilon_min   = DQN_CONFIG["epsilon_min"]
-        self.lr            = DQN_CONFIG["lr"]
-        self.batch_size    = DQN_CONFIG["batch_size"]
-        self.min_replay_size = DQN_CONFIG["min_replay_size"]
-        self.tau           = DQN_CONFIG["tau"]
-        self.use_double    = DQN_CONFIG["double_dqn"]
-        self.dropout       = DQN_CONFIG["dropout"]
+        self.gamma         = config.get("gamma", COMMON["gamma"])
+        self.epsilon       = config["epsilon"]
+        self.epsilon_decay = config["epsilon_decay"]
+        self.epsilon_min   = config["epsilon_min"]
+        self.lr            = config["lr"]
+        self.batch_size    = config["batch_size"]
+        self.min_replay_size = config["min_replay_size"]
+        self.tau           = config["tau"]
+        self.use_double    = config["double_dqn"]
+        self.dropout       = config["dropout"]
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -41,11 +49,11 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.StepLR(
             self.optimizer,
-            step_size=DQN_CONFIG["lr_decay_step"],
-            gamma=DQN_CONFIG["lr_decay_gamma"],
+            step_size=config["lr_decay_step"],
+            gamma=config["lr_decay_gamma"],
         )
 
-        self.memory = ReplayBuffer(DQN_CONFIG["replay_buffer_size"])
+        self.memory = ReplayBuffer(config["replay_buffer_size"])
         self.optimization_steps = 0
         self.hard_update_target()
 

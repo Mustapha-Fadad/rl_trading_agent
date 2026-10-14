@@ -131,6 +131,33 @@ python -m scripts.walk_forward --algo dqn --ticker AAPL --seeds 3 --max-folds 1 
 Walk-forward rows are written after every completed seed, so an interrupted run
 retains all finished results.
 
+## DQN Hyperparameter Tuning
+
+Tune DQN on chronological validation regimes carved exclusively from the
+training split:
+
+```powershell
+python -m scripts.tune_dqn --trials 20 --episodes 120 --seeds 3
+```
+
+Each trial trains independent seeds across AAPL, MSFT, and GOOGL. The objective
+is the mean benchmark-aware validation score minus a penalty for variation
+across seeds. Every study also evaluates the current DQN defaults as a control.
+Optuna state is persisted in `logs/dqn_optuna.db`, and the trial table is
+exported to `reports/dqn_tuning_trials.csv`, so later commands resume the same
+study. Each resumed command adds the requested number of trials, and the script
+rejects protocol changes under the same study name. The held-out benchmark and
+walk-forward test folds are not used to choose parameters.
+
+Use `--trials 0` with the same study settings to regenerate the CSV without
+starting more training.
+
+A short plumbing run is:
+
+```powershell
+python -m scripts.tune_dqn --trials 1 --episodes 5 --seeds 1 --val-windows 1 --study-name dqn-smoke --storage sqlite:///logs/dqn_smoke.db --output reports/dqn_tuning_smoke.csv
+```
+
 Evaluate the deterministic rule-based baselines without retraining RL models:
 
 ```powershell
@@ -174,7 +201,7 @@ multiple processes would share cash and portfolio-level state.
 python -m pytest -q
 ```
 
-The current V6 suite contains 31 passing tests.
+The current V6 suite contains 37 passing tests.
 
 ## Known Limitations
 

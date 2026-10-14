@@ -121,6 +121,16 @@ pipeline check is:
 python -m scripts.walk_forward --algo dqn --ticker AAPL --episodes 20 --seeds 1
 ```
 
+Limit an experiment to the first fold and keep its output separate from accepted
+reports:
+
+```powershell
+python -m scripts.walk_forward --algo dqn --ticker AAPL --seeds 3 --max-folds 1 --output reports/dqn_ablation.csv
+```
+
+Walk-forward rows are written after every completed seed, so an interrupted run
+retains all finished results.
+
 Evaluate the deterministic rule-based baselines without retraining RL models:
 
 ```powershell

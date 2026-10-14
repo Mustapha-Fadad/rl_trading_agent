@@ -29,9 +29,12 @@ def evaluate_on_env(agent, algo, env):
 
     # Set to evaluation mode
     if algo == "dqn":
+        previous_epsilon = agent.epsilon
+        was_training = agent.model.training
         agent.model.eval()
         agent.epsilon = 0.0
     elif algo == "ppo":
+        was_training = agent.policy.training
         agent.policy.eval()
 
     while not done:
@@ -66,6 +69,12 @@ def evaluate_on_env(agent, algo, env):
     benchmark_stats = portfolio_statistics(benchmark_values)
     bh_return = benchmark_stats["return"]
 
+    if algo == "dqn":
+        agent.epsilon = previous_epsilon
+        agent.model.train(was_training)
+    elif algo == "ppo":
+        agent.policy.train(was_training)
+
     return {
         "agent_return_pct": round(agent_return * 100, 2),
         "bh_return_pct": round(bh_return * 100, 2),
@@ -86,7 +95,6 @@ def train_dqn_fold(train_env, episodes=150):
     window_size = COMMON["window_size"]
 
     agent = DQNAgent(state_size, action_size=action_size, window_size=window_size)
-
     for ep in range(episodes):
         state = train_env.reset()
         done = False
@@ -139,6 +147,7 @@ def run_walk_forward(
     episodes=100,
     seeds=1,
     output_path="reports/walk_forward_results.csv",
+    max_folds=None,
 ):
     df = load_data(ticker, **DATA_CONFIG)
     total_len = len(df)
@@ -163,6 +172,8 @@ def run_walk_forward(
     if not folds:
         print(f"Dataset length ({total_len}) too short for train_days={train_days} + test_days={test_days}")
         return []
+    if max_folds is not None:
+        folds = folds[:max_folds]
 
     print(f"\n=======================================================")
     print(f"Starting Walk-Forward Validation | Ticker: {ticker} | Folds: {len(folds)}")
@@ -177,6 +188,13 @@ def run_walk_forward(
     }
     algos_to_run = algo_groups.get(algo.lower(), [algo.lower()])
     results = []
+    fieldnames = ["fold", "seed", "algo", "ticker", "pipeline_version", "train_days", "test_days", "agent_return_pct", "bh_return_pct", "alpha_pct", "max_drawdown_pct", "sharpe_ratio", "bh_max_drawdown_pct", "bh_sharpe_ratio", "turnover", "rebalances", "average_exposure_pct"]
+    out_path = output_path
+    output_dir = os.path.dirname(out_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    with open(out_path, "w", newline="") as result_file:
+        csv.DictWriter(result_file, fieldnames=fieldnames).writeheader()
 
     for fid, train_df, test_df in folds:
         for current_algo in algos_to_run:
@@ -229,25 +247,15 @@ def run_walk_forward(
                     **metrics,
                 }
                 results.append(res_entry)
+                with open(out_path, "a", newline="") as result_file:
+                    writer = csv.DictWriter(result_file, fieldnames=fieldnames)
+                    writer.writerow(res_entry)
                 print(
                     f"    Fold {fid} [{current_algo.upper()}] Result: "
                     f"Agent = {metrics['agent_return_pct']}%, "
                     f"B&H = {metrics['bh_return_pct']}%, Alpha = {metrics['alpha_pct']}%"
                 )
 
-    # Save to CSV
-    os.makedirs("reports", exist_ok=True)
-    out_path = output_path
-    output_dir = os.path.dirname(out_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-
-    fieldnames = ["fold", "seed", "algo", "ticker", "pipeline_version", "train_days", "test_days", "agent_return_pct", "bh_return_pct", "alpha_pct", "max_drawdown_pct", "sharpe_ratio", "bh_max_drawdown_pct", "bh_sharpe_ratio", "turnover", "rebalances", "average_exposure_pct"]
-
-    with open(out_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(results)
 
     print(f"\nSaved Walk-Forward results to {out_path}\n")
 
@@ -299,6 +307,12 @@ if __name__ == "__main__":
         default="reports/walk_forward_results.csv",
         help="CSV output path",
     )
+    parser.add_argument(
+        "--max-folds",
+        type=int,
+        default=None,
+        help="Limit folds for a quick ablation run",
+    )
     args = parser.parse_args()
 
     run_walk_forward(
@@ -310,4 +324,5 @@ if __name__ == "__main__":
         episodes=args.episodes,
         seeds=max(1, args.seeds),
         output_path=args.output,
+        max_folds=args.max_folds,
     )

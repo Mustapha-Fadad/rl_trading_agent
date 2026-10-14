@@ -9,7 +9,7 @@ from agents.rule_based import RuleBasedAgent
 from data import data_loader
 from data.alpaca_loader import load_alpaca_data
 from scripts.paper_trade import _submit_action, _valid_actions, build_state_from_df
-from scripts.walk_forward import train_dqn_fold
+from scripts.walk_forward import evaluate_on_env, train_dqn_fold
 from env.trading_env import TradingEnv
 from utils.checkpoints import load_checkpoint, save_checkpoint
 from utils.metrics import buy_and_hold_values, portfolio_statistics, validation_score
@@ -129,6 +129,20 @@ def test_dqn_performs_an_optimization_step():
     agent.memory.add(state, 4, -0.1, state, True)
     agent.train()
     assert agent.optimization_steps == 1
+
+
+def test_walk_forward_evaluation_restores_dqn_training_state():
+    from data.features import add_features
+
+    env = TradingEnv(add_features(_prices()), window_size=10)
+    agent = DQNAgent(state_size=env.reset().shape[0], action_size=5, window_size=10)
+    agent.epsilon = 0.37
+    agent.model.train()
+
+    evaluate_on_env(agent, "dqn", env)
+
+    assert agent.epsilon == pytest.approx(0.37)
+    assert agent.model.training
 
 
 def test_validation_score_penalizes_drawdown_and_turnover():

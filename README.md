@@ -30,11 +30,20 @@ rule-based strategies, while trend-plus-volatility produced the lowest average
 drawdown. The results are reported honestly: neither RL agent demonstrates
 consistent market outperformance.
 
+A subsequent DQN search used 120 episodes, three seeds, and three training-only
+validation regimes across AAPL, MSFT, and GOOGL. The existing defaults remained
+best among eight completed trials, with a robust validation score of `-0.0339`.
+An AAPL-only specialization experiment was also rejected: its robust score was
+`-0.2095`, mean alpha was `-14.21%`, and results varied substantially by seed.
+Neither experiment changed the accepted model or paper-trading checkpoint.
+
 Detailed outputs are available in:
 
 - `reports/evaluation_summary.csv`
 - `reports/walk_forward_results.csv`
 - `reports/baseline_walk_forward_results.csv`
+- `reports/dqn_tuning_full.csv`
+- `reports/dqn_AAPL_diagnostics.csv`
 
 ## Features
 
@@ -152,6 +161,17 @@ walk-forward test folds are not used to choose parameters.
 Use `--trials 0` with the same study settings to regenerate the CSV without
 starting more training.
 
+Diagnose a ticker-specific DQN without touching the accepted checkpoint or the
+held-out test split:
+
+```powershell
+python -m scripts.dqn_ticker_diagnostics --ticker AAPL --episodes 120 --seeds 3
+```
+
+The diagnostic is resumable after each completed seed and records per-regime
+alpha, drawdown, Sharpe ratio, turnover, exposure, and allocation frequencies
+in `reports/dqn_AAPL_diagnostics.csv`.
+
 A short plumbing run is:
 
 ```powershell
@@ -201,7 +221,7 @@ multiple processes would share cash and portfolio-level state.
 python -m pytest -q
 ```
 
-The current V6 suite contains 37 passing tests.
+The current V6 suite contains 38 passing tests.
 
 ## Known Limitations
 

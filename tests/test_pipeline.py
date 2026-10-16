@@ -9,6 +9,7 @@ from agents.rule_based import RuleBasedAgent
 from data import data_loader
 from data.alpaca_loader import load_alpaca_data
 from scripts.paper_trade import _submit_action, _valid_actions, build_state_from_df
+from scripts.dqn_ticker_diagnostics import action_distribution
 from scripts.tune_dqn import configure_study, robust_seed_score
 from scripts.walk_forward import evaluate_on_env, train_dqn_fold
 from env.trading_env import TradingEnv
@@ -156,6 +157,12 @@ def test_robust_seed_score_penalizes_variance():
     unstable = robust_seed_score([0.0, 0.1, 0.2], stability_weight=0.5)
     assert stable == pytest.approx(0.1)
     assert unstable < stable
+
+
+def test_dqn_diagnostic_action_distribution_uses_all_allocations():
+    percentages = action_distribution([0, 0, 2, 4])
+    assert percentages.tolist() == pytest.approx([50.0, 0.0, 25.0, 0.0, 25.0])
+    assert percentages.sum() == pytest.approx(100.0)
 
 
 def test_dqn_tuning_study_rejects_protocol_changes():

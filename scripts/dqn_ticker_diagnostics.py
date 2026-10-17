@@ -57,19 +57,27 @@ def action_distribution(actions, action_size=COMMON["action_size"]):
     return counts / actions.size * 100.0
 
 
-def train_ticker_agent(train_data, episodes, seed):
+def train_ticker_agent(
+    train_data,
+    episodes,
+    seed,
+    config_overrides=None,
+    reward_overrides=None,
+):
     set_seed(seed)
+    reward_config = {**REWARD_CONFIG, **(reward_overrides or {})}
     env = TradingEnv(
         train_data,
         window_size=COMMON["window_size"],
         random_start=TRAIN_CONFIG["random_start"],
         episode_length=TRAIN_CONFIG["episode_length"],
-        **REWARD_CONFIG,
+        **reward_config,
     )
     agent = DQNAgent(
         env.reset().shape[0],
         action_size=COMMON["action_size"],
         window_size=COMMON["window_size"],
+        config_overrides=config_overrides,
     )
 
     for episode in range(episodes):

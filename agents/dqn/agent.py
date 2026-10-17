@@ -34,6 +34,16 @@ class DQNAgent:
         self.tau           = config["tau"]
         self.use_double    = config["double_dqn"]
         self.dropout       = config["dropout"]
+        self.anchor_action = config.get("anchor_action")
+        self.anchor_margin = float(config.get("anchor_margin", 0.0))
+        self.anchor_bias   = float(config.get("anchor_bias", 0.0))
+        self.anchor_initialize = bool(config.get("anchor_initialize", False))
+        if self.anchor_action is not None:
+            self.anchor_action = int(self.anchor_action)
+            if not 0 <= self.anchor_action < self.action_size:
+                raise ValueError("anchor_action must be a valid action index")
+        if self.anchor_margin < 0.0:
+            raise ValueError("anchor_margin must be non-negative")
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -45,6 +55,14 @@ class DQNAgent:
             state_size, self.action_size,
             window_size=self.window_size, dropout=0.0
         ).to(self.device)
+        if self.anchor_action is not None and self.anchor_initialize:
+            with torch.no_grad():
+                self.model.advantage_head.weight.zero_()
+                self.model.advantage_head.bias.zero_()
+                self.model.advantage_head.bias[self.anchor_action] = self.anchor_bias
+        elif self.anchor_action is not None and self.anchor_bias:
+            with torch.no_grad():
+                self.model.advantage_head.bias[self.anchor_action] += self.anchor_bias
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.StepLR(
@@ -86,12 +104,30 @@ class DQNAgent:
             q_values = self.model(state_t)
         self.model.train()
 
+        valid_mask = None
         if valid_actions is not None:
-            mask = torch.zeros_like(q_values, dtype=torch.bool)
-            mask[:, valid_actions] = True
-            q_values = q_values.masked_fill(~mask, float('-inf'))
+            valid_mask = torch.zeros_like(q_values, dtype=torch.bool)
+            valid_mask[:, valid_actions] = True
 
-        return torch.argmax(q_values).item()
+        return self._greedy_actions(q_values, valid_mask).item()
+
+    def _greedy_actions(self, q_values, valid_mask=None):
+        """Select actions, requiring a Q-value margin to leave an optional anchor."""
+        if valid_mask is None:
+            valid_mask = torch.ones_like(q_values, dtype=torch.bool)
+        masked_q = q_values.masked_fill(~valid_mask, float('-inf'))
+        best_values, best_actions = masked_q.max(dim=1)
+
+        if self.anchor_action is not None:
+            anchor_valid = valid_mask[:, self.anchor_action]
+            anchor_values = q_values[:, self.anchor_action]
+            prefer_anchor = anchor_valid & (
+                best_values < anchor_values + self.anchor_margin
+            )
+            anchor_actions = torch.full_like(best_actions, self.anchor_action)
+            best_actions = torch.where(prefer_anchor, anchor_actions, best_actions)
+
+        return best_actions.unsqueeze(1)
 
     # ------------------------------------------------------------------
     # Valid-action mask reconstruction from batched next-states
@@ -145,16 +181,18 @@ class DQNAgent:
                 self.model.eval()
                 online_next_q = self.model(next_states)
                 self.model.train()
-                online_next_q = online_next_q.masked_fill(~next_valid_mask, float('-inf'))
-                best_actions  = online_next_q.argmax(dim=1, keepdim=True)
+                best_actions = self._greedy_actions(
+                    online_next_q, next_valid_mask
+                )
 
                 target_next_q = self.target_model(next_states)
-                target_next_q = target_next_q.masked_fill(~next_valid_mask, float('-inf'))
                 next_q_values = target_next_q.gather(1, best_actions).squeeze()
             else:
                 target_next_q = self.target_model(next_states)
-                target_next_q = target_next_q.masked_fill(~next_valid_mask, float('-inf'))
-                next_q_values = target_next_q.max(1)[0]
+                best_actions = self._greedy_actions(
+                    target_next_q, next_valid_mask
+                )
+                next_q_values = target_next_q.gather(1, best_actions).squeeze()
 
         target = rewards + self.gamma * next_q_values * (1 - dones)
         loss   = torch.nn.functional.smooth_l1_loss(q_values, target)

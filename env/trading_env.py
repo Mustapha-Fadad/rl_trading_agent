@@ -23,6 +23,7 @@ class TradingEnv:
         transaction_fee=0.001,
         rebalance_threshold=0.02,
         min_rebalance_steps=20,
+        underexposure_penalty=0.0,
     ):
         self.data = data
         self.window_size = window_size
@@ -36,6 +37,9 @@ class TradingEnv:
         self.transaction_fee = transaction_fee
         self.rebalance_threshold = rebalance_threshold
         self.min_rebalance_steps = min_rebalance_steps
+        self.underexposure_penalty = float(underexposure_penalty)
+        if self.underexposure_penalty < 0.0:
+            raise ValueError("underexposure_penalty must be non-negative")
 
         self.target_allocations = TARGET_ALLOCATIONS.copy()
         self.action_space = np.arange(len(self.target_allocations))
@@ -173,6 +177,7 @@ class TradingEnv:
             - self.turnover_penalty * turnover
             - self.rebalance_penalty * float(turnover > 0.0)
             - self.drawdown_penalty * self.current_drawdown
+            - self.underexposure_penalty * (1.0 - self.position_frac)
         )
 
         self.prev_price = new_price

@@ -35,7 +35,11 @@ validation regimes across AAPL, MSFT, and GOOGL. The existing defaults remained
 best among eight completed trials, with a robust validation score of `-0.0339`.
 An AAPL-only specialization experiment was also rejected: its robust score was
 `-0.2095`, mean alpha was `-14.21%`, and results varied substantially by seed.
-Neither experiment changed the accepted model or paper-trading checkpoint.
+A conservative Buy & Hold anchor with a `0.02` Q-margin improved drawdown but
+lost `9.11%` mean alpha. Raising the margin to `0.10` reproduced Buy & Hold
+exactly across both pilot seeds, showing that the safety prior works but the
+agent did not find reliable de-risking signals. None of these experiments
+changed the accepted model or paper-trading checkpoint.
 
 Detailed outputs are available in:
 
@@ -44,6 +48,8 @@ Detailed outputs are available in:
 - `reports/baseline_walk_forward_results.csv`
 - `reports/dqn_tuning_full.csv`
 - `reports/dqn_AAPL_diagnostics.csv`
+- `reports/dqn_AAPL_anchor_pilot.csv`
+- `reports/dqn_AAPL_anchor_margin10_pilot.csv`
 
 ## Features
 
@@ -172,6 +178,16 @@ The diagnostic is resumable after each completed seed and records per-regime
 alpha, drawdown, Sharpe ratio, turnover, exposure, and allocation frequencies
 in `reports/dqn_AAPL_diagnostics.csv`.
 
+Run the conservative Buy & Hold anchor pilot separately:
+
+```powershell
+python -m scripts.dqn_anchor_diagnostics --ticker AAPL --episodes 40 --seeds 2 --val-windows 2
+```
+
+The anchor requires a configurable Q-value advantage before reducing 100%
+exposure and adds a small training cost for holding cash. It is opt-in and does
+not alter existing training, checkpoints, or paper execution.
+
 A short plumbing run is:
 
 ```powershell
@@ -221,7 +237,7 @@ multiple processes would share cash and portfolio-level state.
 python -m pytest -q
 ```
 
-The current V6 suite contains 38 passing tests.
+The current V6 suite contains 42 passing tests.
 
 ## Known Limitations
 

@@ -155,6 +155,25 @@ def test_reward_penalizes_each_meaningful_rebalance():
     assert reward == pytest.approx(-0.01)
 
 
+def test_underexposure_penalty_anchors_reward_to_full_investment():
+    data = pd.DataFrame({"Close": [100.0, 100.0, 100.0, 100.0]})
+    kwargs = {
+        "window_size": 3,
+        "reward_scale": 1.0,
+        "turnover_penalty": 0.0,
+        "drawdown_penalty": 0.0,
+        "rebalance_penalty": 0.0,
+        "transaction_fee": 0.0,
+        "underexposure_penalty": 0.001,
+    }
+    cash_env = TradingEnv(data, **kwargs)
+    full_env = TradingEnv(data, **kwargs)
+    _, cash_reward, _ = cash_env.step(0)
+    _, full_reward, _ = full_env.step(4)
+    assert cash_reward == pytest.approx(-0.001)
+    assert full_reward == pytest.approx(0.0)
+
+
 def test_fixed_episode_length():
     env = TradingEnv(
         _make_data(n=300),

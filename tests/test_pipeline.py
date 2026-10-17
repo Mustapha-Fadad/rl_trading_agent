@@ -152,6 +152,49 @@ def test_dqn_accepts_per_agent_hyperparameter_overrides():
     assert agent.optimizer.param_groups[0]["lr"] == pytest.approx(0.00012)
 
 
+def test_dqn_anchor_requires_margin_before_reducing_exposure():
+    agent = DQNAgent(
+        state_size=39,
+        action_size=5,
+        window_size=10,
+        config_overrides={"anchor_action": 4, "anchor_margin": 0.1},
+    )
+    valid = torch.ones((1, 5), dtype=torch.bool)
+    near = torch.tensor([[0.20, 0.0, 0.0, 0.0, 0.15]])
+    decisive = torch.tensor([[0.30, 0.0, 0.0, 0.0, 0.15]])
+    assert agent._greedy_actions(near, valid).item() == 4
+    assert agent._greedy_actions(decisive, valid).item() == 0
+
+
+def test_dqn_anchor_respects_holding_period_mask():
+    agent = DQNAgent(
+        state_size=39,
+        action_size=5,
+        window_size=10,
+        config_overrides={"anchor_action": 4, "anchor_margin": 1.0},
+    )
+    valid = torch.tensor([[False, False, True, False, False]])
+    q_values = torch.tensor([[0.0, 0.0, 0.1, 0.0, 1.0]])
+    assert agent._greedy_actions(q_values, valid).item() == 2
+
+
+def test_dqn_anchor_initialization_starts_from_preferred_action():
+    agent = DQNAgent(
+        state_size=39,
+        action_size=5,
+        window_size=10,
+        config_overrides={
+            "anchor_action": 4,
+            "anchor_bias": 0.05,
+            "anchor_initialize": True,
+        },
+    )
+    state = torch.zeros((1, 39), dtype=torch.float32)
+    with torch.no_grad():
+        q_values = agent.model(state)
+    assert agent._greedy_actions(q_values).item() == 4
+
+
 def test_robust_seed_score_penalizes_variance():
     stable = robust_seed_score([0.1, 0.1, 0.1], stability_weight=0.5)
     unstable = robust_seed_score([0.0, 0.1, 0.2], stability_weight=0.5)
